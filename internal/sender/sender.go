@@ -45,7 +45,7 @@ func senderMain() {
 	helloData := protocol.HelloRequest{
 		Ver:         1,
 		Auth:        api_key,
-		JobID:       "test",
+		JobID:       0,
 		Name:        "testRequest",
 		Size:        size,
 		SHA256:      sha256Hex,

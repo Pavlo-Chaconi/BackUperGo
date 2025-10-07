@@ -38,23 +38,6 @@ func handleConnectionFromServer(conn net.Conn) {
 
 	var helloRequest protocol.HelloRequest
 
-	// err := binary.Read(conn, binary.BigEndian, &length)
-	// if err != nil {
-	// 	log.Fatalf("Ошибка чтения длинны сообщения: %v", err)
-	// }
-
-	// buf := make([]byte, length)
-
-	// _, err = io.ReadFull(conn, buf)
-	// if err != nil {
-	// 	log.Fatalf("Ошибка чтения JSON: %v", err)
-	// }
-
-	// err = json.Unmarshal(buf, &helloRequest)
-	// if err != nil {
-	// 	log.Fatalf("Ошибка парсинга JSON: %v", err)
-	// }
-
 	if err := transport.ReceiveMessage(conn, &helloRequest); err != nil {
 		log.Fatalf("Ошибка приема HELLO: %v", err)
 	}
@@ -63,16 +46,32 @@ func handleConnectionFromServer(conn net.Conn) {
 	if err != nil {
 		log.Fatalf("Ошибка создания файла: %v", err)
 	}
+	defer file.Close()
 
-	_, err = io.Copy(file, conn)
-	if err != nil {
-		log.Fatalf("Ошибка записи файла: %v", err)
+	//Необходимо читать определенное количество байт, сколько передаст HELLO реквест изначально, потому используем io.CopyN
+
+	writenBytes, err := io.CopyN(file, conn, helloRequest.Size)
+	if err != nil || writenBytes != helloRequest.Size {
+		responseData := protocol.FinalResponse{
+			JobID:      helloRequest.JobID,
+			Status:     "SIZE_FAIL",
+			Reason:     "Размер файла не совпадает с ожимдаемым!",
+			Size:       writenBytes,
+			SHA256:     "Не посчитано",
+			ReceivedAt: time.Now(),
+			StoredPath: "NULL",
+		}
+
+		_ = transport.SendMessage(conn, responseData)
+		file.Close()
+		os.Remove(file.Name())
+		log.Printf("Ошибка записи файла: %v", err)
+		return
 	}
 
-	file.Close()
-
-	receivedHash, receivedHashSize, err := calc256Hex("received_" + helloRequest.Name)
+	receivedHash, err := calc256Hex("received_" + helloRequest.Name)
 	if err != nil {
+
 		log.Fatalf("Ошибка подсчета SHA256: %v", err)
 	}
 
@@ -80,18 +79,18 @@ func handleConnectionFromServer(conn net.Conn) {
 	reason := ""
 
 	if receivedHash != helloRequest.SHA256 {
-		status = "FAIL"
+		status = "HASH_FAIL"
 		reason = "Несовпадение хеша SHA256"
 	}
 
 	responseData := protocol.FinalResponse{
-		JobID:      1,
+		JobID:      helloRequest.JobID,
 		Status:     status,
 		Reason:     reason,
-		Size:       receivedHashSize,
+		Size:       writenBytes,
 		SHA256:     receivedHash,
 		ReceivedAt: time.Now(),
-		StoredPath: "received_" + helloRequest.Name,
+		StoredPath: file.Name(),
 	}
 
 	if err := transport.SendMessage(conn, responseData); err != nil {
@@ -100,22 +99,22 @@ func handleConnectionFromServer(conn net.Conn) {
 
 }
 
-func calc256Hex(path string) (string, int64, error) {
+func calc256Hex(path string) (string, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return "", 0, err
+		return "", err
 	}
 	defer file.Close()
 
 	hasher := sha256.New()
 	if _, err := io.Copy(hasher, file); err != nil {
-		return "", 0, err
+		return "", err
 	}
 
-	info, err := os.Stat(path)
-	if err != nil {
-		log.Fatalf("Ошибка при подсчете финального размера архива на стороне клиента!: %v", err)
-	}
+	// info, err := os.Stat(path)
+	// if err != nil {
+	// 	log.Fatalf("Ошибка при подсчете финального размера архива на стороне клиента!: %v", err)
+	// }
 
-	return hex.EncodeToString(hasher.Sum(nil)), info.Size(), nil
+	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
