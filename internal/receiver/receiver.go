@@ -31,7 +31,6 @@ func receiverMain() {
 }
 
 func handleConnectionFromServer(conn net.Conn) {
-
 	defer conn.Close()
 
 	// var length uint32
