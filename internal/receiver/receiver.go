@@ -9,10 +9,21 @@ import (
 	"log"
 	"net"
 	"os"
+	"path/filepath"
 	"time"
 )
 
+const baseDir = "C:\\BackUper\\backups"
+
+func Run() {
+	receiverMain()
+}
+
 func receiverMain() {
+	if err := os.MkdirAll(baseDir, 0755); err != nil {
+		log.Fatalf("Ошибка создания директории: %v", err)
+	}
+
 	listner, err := net.Listen("tcp", "localhost:9000")
 	if err != nil {
 		log.Fatal(err)
@@ -41,14 +52,16 @@ func handleConnectionFromServer(conn net.Conn) {
 		log.Fatalf("Ошибка приема HELLO: %v", err)
 	}
 
-	file, err := os.Create("received_" + helloRequest.Name)
+	safeFileName := filepath.Base(helloRequest.Name)
+	filePath := filepath.Join(baseDir, "received_"+safeFileName)
+
+	file, err := os.Create(filePath)
 	if err != nil {
 		log.Fatalf("Ошибка создания файла: %v", err)
 	}
 	defer file.Close()
 
 	//Необходимо читать определенное количество байт, сколько передаст HELLO реквест изначально, потому используем io.CopyN
-
 	writenBytes, err := io.CopyN(file, conn, helloRequest.Size)
 	if err != nil || writenBytes != helloRequest.Size {
 		responseData := protocol.FinalResponse{

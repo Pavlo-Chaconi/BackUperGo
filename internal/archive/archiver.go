@@ -6,10 +6,13 @@ import (
 	"encoding/hex"
 	"io"
 	"os"
+	"path/filepath"
 )
 
 func CreateZipArchive(archivePath string, filesToArchive []string) (size int64, sha256Hex string, err error) {
-
+	if err := os.MkdirAll(filepath.Dir(archivePath), 0755); err != nil {
+		return 0, "", err
+	}
 	//Тут сжатие данных для ZIP, в будущем попробуем другие форматы сжатия и архивации
 	zipFile, err := os.Create(archivePath)
 	if err != nil {

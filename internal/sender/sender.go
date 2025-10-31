@@ -14,14 +14,136 @@ import (
 	"time"
 )
 
-var api_key string
-var archivePath string
+type SenderOptions struct {
+	RootFolder  string
+	ArchivePath string
+	APIKey      string
+	Name        string
+	Addr        string
+	MaxRetries  int
+}
 
-func senderMain() {
+// func BuildAndSendArchive(options SenderOptions) error {
+// 	if options.RootFolder == "" || options.ArchivePath == "" || options.Addr == "" {
+// 		return fmt.Errorf("rootFolder, archivePath и addr являются обязательными параметрами")
+// 	}
+// 	if options.MaxRetries <= 0 {
+// 		options.MaxRetries = 5
+// 	}
+// 	if options.Name == "" {
+// 		options.Name = "backup"
+// 	}
+// 	if options.APIKey == "" {
+// 		return fmt.Errorf("apiKey является обязательным параметром")
+// 	}
+
+// 	files, err := collectFiles(options.RootFolder)
+// 	if err != nil {
+// 		return fmt.Errorf("ошибка получения файлов для архивации: %w", err)
+// 	}
+
+// 	size, sha256Hex, err := archive.CreateZipArchive(options.ArchivePath, files)
+// 	if err != nil {
+// 		return fmt.Errorf("ошибка архивации: %w", err)
+// 	}
+
+// 	helloData := protocol.HelloRequest{
+// 		Ver:         1,
+// 		Auth:        options.APIKey,
+// 		JobID:       0,
+// 		Name:        options.Name,
+// 		Size:        size,
+// 		SHA256:      sha256Hex,
+// 		Compression: "zip",
+// 		Encryption:  "none",
+// 	}
+
+// 	if err := sendWithRetry(options.Addr, options.ArchivePath, helloData, options.MaxRetries); err != nil {
+// 		return fmt.Errorf("ошибка при вызове функции sendWithRetry: %w", err)
+// 	}
+// 	return nil
+// }
+
+func BuildAndSendArchive(options SenderOptions) error {
+	if options.RootFolder == "" || options.Addr == "" {
+		return fmt.Errorf("rootFolder и addr являются обязательными параметрами")
+	}
+	if options.MaxRetries <= 0 {
+		options.MaxRetries = 5
+	}
+	if options.Name == "" {
+		options.Name = "backup"
+	}
+	if options.APIKey == "" {
+		return fmt.Errorf("apiKey является обязательным параметром")
+	}
+
+	// Определяем корректный путь к файлу архива:
+	// - если пусто или передан каталог → сгенерируем имя файла внутри каталога
+	isDirHint := false
+	if options.ArchivePath == "" {
+		isDirHint = true
+	} else {
+		if info, err := os.Stat(options.ArchivePath); err == nil && info.IsDir() {
+			isDirHint = true
+		} else {
+			// признак каталога по завершающему слэшу
+			last := options.ArchivePath[len(options.ArchivePath)-1]
+			if last == '\\' || last == '/' {
+				isDirHint = true
+			}
+			// корень диска вида "C:" тоже трактуем как каталог
+			if len(options.ArchivePath) == 2 && options.ArchivePath[1] == ':' {
+				isDirHint = true
+			}
+		}
+	}
+
+	if isDirHint {
+		var dirPath string
+		if options.ArchivePath == "" {
+			dirPath = os.TempDir()
+		} else {
+			dirPath = filepath.Clean(options.ArchivePath)
+		}
+		base := filepath.Base(options.RootFolder)
+		if base == "." || base == string(filepath.Separator) {
+			base = "backup"
+		}
+		options.ArchivePath = filepath.Join(dirPath,
+			fmt.Sprintf("%s_%s.zip", base, time.Now().Format("20060102_150405")))
+	}
+
+	files, err := collectFiles(options.RootFolder)
+	if err != nil {
+		return fmt.Errorf("ошибка получения файлов для архивации: %w", err)
+	}
+
+	size, sha256Hex, err := archive.CreateZipArchive(options.ArchivePath, files)
+	if err != nil {
+		return fmt.Errorf("ошибка архивации: %w", err)
+	}
+
+	helloData := protocol.HelloRequest{
+		Ver:         1,
+		Auth:        options.APIKey,
+		JobID:       0,
+		Name:        options.Name,
+		Size:        size,
+		SHA256:      sha256Hex,
+		Compression: "zip",
+		Encryption:  "none",
+	}
+
+	if err := sendWithRetry(options.Addr, options.ArchivePath, helloData, options.MaxRetries); err != nil {
+		return fmt.Errorf("ошибка при вызове функции sendWithRetry: %w", err)
+	}
+	return nil
+}
+
+func collectFiles(rootFolder string) ([]string, error) {
 	var files []string
-	root := "C:/Users/.../test"
-
-	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+	err := filepath.Walk(rootFolder, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			log.Printf("Ошибка доступа по пути %s: %v", path, err)
 			return err
@@ -34,58 +156,31 @@ func senderMain() {
 	if err != nil {
 		log.Fatalf("Фатальная ошибка обхода: %v", err)
 	}
-
-	api_key = "test_key"
-	archivePath = "C:/Users/.../backup.zip"
-
-	size, sha256Hex, err := archive.CreateZipArchive(archivePath, files)
-	if err != nil {
-		log.Fatalf("Ошибка архивации: %v", err)
-	}
-
-	log.Printf("Архив готов: %s (размер=%d байт, sha256=%s)", archivePath, size, sha256Hex)
-
-	helloData := protocol.HelloRequest{
-		Ver:         1,
-		Auth:        api_key,
-		JobID:       0,
-		Name:        "testRequest",
-		Size:        size,
-		SHA256:      sha256Hex,
-		Compression: "test",
-		Encryption:  "test",
-	}
-
-	if err := sendWithRetry(archivePath, helloData, 5); err != nil {
-		fmt.Errorf("ошибка при вызове функции SendOnce: %w", err)
-	}
-
+	return files, nil
 }
 
-func sendOnce(archivePath string, request protocol.HelloRequest) error {
-	conn, err := net.Dial("tcp", "192.168.0.100:9000")
+func sendOnce(Addr string, archivePath string, request protocol.HelloRequest) error {
+	conn, err := net.DialTimeout("tcp", Addr, 3*time.Second)
 	if err != nil {
-		fmt.Errorf("ошибка при установке соединения с клиентом: %w", err)
+		return fmt.Errorf("ошибка при установке соединения с клиентом: %w", err)
 	}
-
-	net.DialTimeout("tcp", "192.168.0.100:9000", 1000)
 
 	defer conn.Close()
 
 	if err := transport.SendMessage(conn, request); err != nil {
-		fmt.Errorf("ошибка при отправке HELLO: %w", err)
+		return fmt.Errorf("ошибка при отправке HELLO: %w", err)
 	}
 
 	file, err := os.Open(archivePath)
 	if err != nil {
-		fmt.Errorf("ошибка при открытии файла: %w", err)
+		return fmt.Errorf("ошибка при открытии файла: %w", err)
 	}
 
 	defer file.Close()
 
 	_, err = io.CopyN(conn, file, request.Size)
 	if err != nil {
-		fmt.Errorf("ошибка при передаче файла! %w", err)
+		return fmt.Errorf("ошибка при передаче файла! %w", err)
 	}
 
 	var finalRequest protocol.FinalResponse
@@ -104,7 +199,7 @@ func sendOnce(archivePath string, request protocol.HelloRequest) error {
 	}
 }
 
-func sendWithRetry(archivePath string, request protocol.HelloRequest, maxRetries int) error {
+func sendWithRetry(addr string, archivePath string, request protocol.HelloRequest, maxRetries int) error {
 	rand.Seed(time.Now().UnixNano())
 	minJitter := 10
 	maxJitter := 20
@@ -113,7 +208,7 @@ func sendWithRetry(archivePath string, request protocol.HelloRequest, maxRetries
 	delay := 10
 
 	for attempt := 0; attempt < maxRetries; attempt++ {
-		err := sendOnce(archivePath, request)
+		err := sendOnce(addr, archivePath, request)
 		if err == nil {
 			return nil
 		}
@@ -123,4 +218,11 @@ func sendWithRetry(archivePath string, request protocol.HelloRequest, maxRetries
 
 	}
 	return fmt.Errorf("все %d попытки на отправку файла были исчерпаны, передача завершилась ошибкой", maxRetries)
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
