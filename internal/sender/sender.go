@@ -135,9 +135,11 @@ func BuildAndSendArchive(options SenderOptions) error {
 		Encryption:  "none",
 	}
 
+	log.Printf("[SENDER] Начало отправки: addr=%s, архив=%s, размер=%d", options.Addr, options.ArchivePath, size)
 	if err := sendWithRetry(options.Addr, options.ArchivePath, helloData, options.MaxRetries); err != nil {
 		return fmt.Errorf("ошибка при вызове функции sendWithRetry: %w", err)
 	}
+	log.Printf("[SENDER] Отправка завершена успешно")
 	return nil
 }
 
@@ -160,33 +162,43 @@ func collectFiles(rootFolder string) ([]string, error) {
 }
 
 func sendOnce(Addr string, archivePath string, request protocol.HelloRequest) error {
+	log.Printf("[SENDER] Подключение к %s (таймаут 3 сек)...", Addr)
 	conn, err := net.DialTimeout("tcp", Addr, 3*time.Second)
 	if err != nil {
+		log.Printf("[SENDER] ОШИБКА подключения: %v", err)
 		return fmt.Errorf("ошибка при установке соединения с клиентом: %w", err)
 	}
-
 	defer conn.Close()
+	log.Printf("[SENDER] Соединение установлено: local=%s -> remote=%s", conn.LocalAddr(), conn.RemoteAddr())
 
+	log.Printf("[SENDER] Отправка HELLO (name=%s, size=%d)...", request.Name, request.Size)
 	if err := transport.SendMessage(conn, request); err != nil {
+		log.Printf("[SENDER] ОШИБКА отправки HELLO: %v", err)
 		return fmt.Errorf("ошибка при отправке HELLO: %w", err)
 	}
+	log.Printf("[SENDER] HELLO отправлен")
 
 	file, err := os.Open(archivePath)
 	if err != nil {
 		return fmt.Errorf("ошибка при открытии файла: %w", err)
 	}
-
 	defer file.Close()
 
-	_, err = io.CopyN(conn, file, request.Size)
+	log.Printf("[SENDER] Передача архива (%d байт)...", request.Size)
+	written, err := io.CopyN(conn, file, request.Size)
 	if err != nil {
+		log.Printf("[SENDER] ОШИБКА передачи: записано %d/%d: %v", written, request.Size, err)
 		return fmt.Errorf("ошибка при передаче файла! %w", err)
 	}
+	log.Printf("[SENDER] Архив передан (%d байт)", written)
 
+	log.Printf("[SENDER] Ожидание FINAL от клиента...")
 	var finalRequest protocol.FinalResponse
 	if err := transport.ReceiveMessage(conn, &finalRequest); err != nil {
+		log.Printf("[SENDER] ОШИБКА приёма FINAL: %v", err)
 		return fmt.Errorf("ошибка полученя FINAL: %w", err)
 	}
+	log.Printf("[SENDER] FINAL получен: status=%s", finalRequest.Status)
 
 	switch finalRequest.Status {
 	case "SIZE_FAIL", "HASH_FAIL":
@@ -208,12 +220,15 @@ func sendWithRetry(addr string, archivePath string, request protocol.HelloReques
 	delay := 10
 
 	for attempt := 0; attempt < maxRetries; attempt++ {
+		log.Printf("[SENDER] Попытка %d/%d", attempt+1, maxRetries)
 		err := sendOnce(addr, archivePath, request)
 		if err == nil {
 			return nil
 		}
+		log.Printf("[SENDER] Попытка не удалась: %v", err)
 
 		totalSeconds := (min(delay*multiplier, maxDelay) + minJitter + rand.Intn(maxJitter-minJitter+1))
+		log.Printf("[SENDER] Повтор через %d сек...", totalSeconds)
 		time.Sleep(time.Duration(totalSeconds) * time.Second)
 
 	}

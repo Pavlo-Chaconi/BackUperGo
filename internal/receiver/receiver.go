@@ -19,11 +19,11 @@ func Run() {
 	receiverMain(nil)
 }
 
-// RunWithShutdown запускает сервер в фоне. Возвращает функцию stop для остановки.
+// RunWithShutdown запускает клиент в фоне. Возвращает функцию stop для остановки.
 func RunWithShutdown() (stop func()) {
 	done := make(chan struct{})
 	var listener net.Listener
-	listener, err := net.Listen("tcp", "localhost:9000")
+	listener, err := net.Listen("tcp", ":9000") // слушаем на всех интерфейсах
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -49,44 +49,52 @@ func receiverMain(existingListener net.Listener) {
 	if existingListener != nil {
 		listener = existingListener
 	} else {
-		listener, err = net.Listen("tcp", "localhost:9000")
+		listener, err = net.Listen("tcp", ":9000")
 		if err != nil {
 			log.Fatal(err)
 		}
 	}
 	defer listener.Close()
 
+	addr := listener.Addr()
+	log.Printf("[CLIENT] Слушаем на %s (порт 9000)", addr)
+
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
-			log.Println("Сервер остановлен или ошибка приёма:", err)
+			log.Println("[CLIENT] Остановлен или ошибка Accept:", err)
 			return
 		}
+		log.Printf("[CLIENT] Входящее соединение от %s", conn.RemoteAddr())
 		go handleConnectionFromServer(conn)
 	}
 }
 
 func handleConnectionFromServer(conn net.Conn) {
+	remote := conn.RemoteAddr().String()
 	defer conn.Close()
-
-	// var length uint32
+	log.Printf("[CLIENT] Обработка соединения от %s", remote)
 
 	var helloRequest protocol.HelloRequest
 
+	log.Printf("[CLIENT] Ожидание HELLO...")
 	if err := transport.ReceiveMessage(conn, &helloRequest); err != nil {
-		log.Fatalf("Ошибка приема HELLO: %v", err)
+		log.Printf("[CLIENT] ОШИБКА приема HELLO от %s: %v", remote, err)
+		return
 	}
+	log.Printf("[CLIENT] HELLO получен: name=%s, size=%d", helloRequest.Name, helloRequest.Size)
 
 	safeFileName := filepath.Base(helloRequest.Name)
 	filePath := filepath.Join(baseDir, "received_"+safeFileName)
 
 	file, err := os.Create(filePath)
 	if err != nil {
-		log.Fatalf("Ошибка создания файла: %v", err)
+		log.Printf("Ошибка создания файла: %v", err)
+		return
 	}
 	defer file.Close()
 
-	//Необходимо читать определенное количество байт, сколько передаст HELLO реквест изначально, потому используем io.CopyN
+	log.Printf("[CLIENT] Приём архива (%d байт)...", helloRequest.Size)
 	writenBytes, err := io.CopyN(file, conn, helloRequest.Size)
 	if err != nil || writenBytes != helloRequest.Size {
 		responseData := protocol.FinalResponse{
@@ -102,14 +110,22 @@ func handleConnectionFromServer(conn net.Conn) {
 		_ = transport.SendMessage(conn, responseData)
 		file.Close()
 		os.Remove(file.Name())
-		log.Printf("Ошибка записи файла: %v", err)
+		log.Printf("[CLIENT] ОШИБКА записи: %v (получено %d/%d)", err, writenBytes, helloRequest.Size)
+		return
+	}
+	log.Printf("[CLIENT] Архив принят (%d байт)", writenBytes)
+
+	// Сбрасываем буфер на диск перед чтением для хеша
+	if err := file.Sync(); err != nil {
+		log.Printf("Ошибка Sync файла: %v", err)
 		return
 	}
 
+	log.Printf("[CLIENT] Подсчёт SHA256...")
 	receivedHash, err := calc256Hex(filePath)
 	if err != nil {
-
-		log.Fatalf("Ошибка подсчета SHA256: %v", err)
+		log.Printf("[CLIENT] ОШИБКА подсчета SHA256: %v", err)
+		return
 	}
 
 	status := "OK"
@@ -130,9 +146,12 @@ func handleConnectionFromServer(conn net.Conn) {
 		StoredPath: file.Name(),
 	}
 
+	log.Printf("[CLIENT] Отправка FINAL (status=%s)...", status)
 	if err := transport.SendMessage(conn, responseData); err != nil {
-		log.Fatalf("Ошибка отправки FINAL: %v", err)
+		log.Printf("[CLIENT] ОШИБКА отправки FINAL: %v", err)
+		return
 	}
+	log.Printf("[CLIENT] FINAL отправлен. Архив сохранён: %s", filePath)
 
 }
 
@@ -147,11 +166,6 @@ func calc256Hex(path string) (string, error) {
 	if _, err := io.Copy(hasher, file); err != nil {
 		return "", err
 	}
-
-	// info, err := os.Stat(path)
-	// if err != nil {
-	// 	log.Fatalf("Ошибка при подсчете финального размера архива на стороне клиента!: %v", err)
-	// }
 
 	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
