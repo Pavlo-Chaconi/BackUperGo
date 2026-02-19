@@ -16,27 +16,52 @@ import (
 const baseDir = "C:\\BackUper\\backups"
 
 func Run() {
-	receiverMain()
+	receiverMain(nil)
 }
 
-func receiverMain() {
+// RunWithShutdown запускает сервер в фоне. Возвращает функцию stop для остановки.
+func RunWithShutdown() (stop func()) {
+	done := make(chan struct{})
+	var listener net.Listener
+	listener, err := net.Listen("tcp", "localhost:9000")
+	if err != nil {
+		log.Fatal(err)
+	}
+	go func() {
+		defer close(done)
+		receiverMain(listener)
+	}()
+	return func() {
+		if listener != nil {
+			listener.Close()
+		}
+		<-done
+	}
+}
+
+func receiverMain(existingListener net.Listener) {
 	if err := os.MkdirAll(baseDir, 0755); err != nil {
 		log.Fatalf("Ошибка создания директории: %v", err)
 	}
 
-	listner, err := net.Listen("tcp", "localhost:9000")
-	if err != nil {
-		log.Fatal(err)
+	var listener net.Listener
+	var err error
+	if existingListener != nil {
+		listener = existingListener
+	} else {
+		listener, err = net.Listen("tcp", "localhost:9000")
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
-	defer listner.Close()
+	defer listener.Close()
 
 	for {
-		conn, err := listner.Accept()
+		conn, err := listener.Accept()
 		if err != nil {
-			log.Println("Ошибка во время принятия сообщения: ", err)
-			continue
+			log.Println("Сервер остановлен или ошибка приёма:", err)
+			return
 		}
-
 		go handleConnectionFromServer(conn)
 	}
 }
@@ -81,7 +106,7 @@ func handleConnectionFromServer(conn net.Conn) {
 		return
 	}
 
-	receivedHash, err := calc256Hex("received_" + helloRequest.Name)
+	receivedHash, err := calc256Hex(filePath)
 	if err != nil {
 
 		log.Fatalf("Ошибка подсчета SHA256: %v", err)
