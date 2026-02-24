@@ -1,10 +1,18 @@
 package tray
 
-import "fyne.io/systray"
+import (
+	"os"
+
+	"fyne.io/systray"
+)
 
 // Run starts the system tray and blocks until it exits.
 func Run(onOpen func(), onExit func()) {
 	systray.Run(func() {
+		if iconBytes, err := os.ReadFile("favicon/database_backup_icon_217454.ico"); err == nil {
+			setIcon(iconBytes)
+		}
+
 		mOpen := systray.AddMenuItem("Open", "Show console")
 		mExit := systray.AddMenuItem("Exit", "Exit application")
 
