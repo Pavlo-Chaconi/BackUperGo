@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net"
 )
 
@@ -24,7 +23,6 @@ func SendMessage(conn net.Conn, v any) error {
 	if err != nil {
 		return fmt.Errorf("ошибка отправки данных JSON: %w", err)
 	}
-	log.Printf("[TRANSPORT] Отправлено %d байт JSON", len(jsonData))
 	return nil
 }
 
@@ -46,6 +44,5 @@ func ReceiveMessage(conn net.Conn, v any) error {
 	if err != nil {
 		return fmt.Errorf("ошибка парсинга JSON файла: %w", err)
 	}
-	log.Printf("[TRANSPORT] Принято сообщение %d байт", length)
 	return nil
 }

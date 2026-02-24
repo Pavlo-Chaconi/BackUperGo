@@ -1,0 +1,65 @@
+﻿<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BackUper | Settings</title>
+    <link rel="stylesheet" href="/assets/app.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="logo">BU</div>
+          <div class="brand-text">
+            <div class="title">BackUper</div>
+            <div class="subtitle">Local Control Plane</div>
+          </div>
+        </div>
+        <nav class="menu">
+          <a href="/dashboard">Dashboard <span class="pill">live</span></a>
+          <a href="/settings">Settings</a>
+          <a href="/schedule">Schedule</a>
+        </nav>
+        <div class="sidebar-footer">
+          <a href="/login" data-logout>Выйти</a>
+        </div>
+      </aside>
+      <main class="content">
+        <div class="topbar">
+          <h1>Конфигурация</h1>
+          <div class="meta">Параметры отправки и хранения</div>
+        </div>
+        <section class="card">
+          <div class="card-header">
+            <h2>Параметры отправки</h2>
+            <p>API ключ не нужен на этом этапе. Вернёмся к нему при подключении БД и авторизации.</p>
+          </div>
+          <div class="card-body two-col">
+            <label class="field">
+              <span>Адрес приёмника</span>
+              <input type="text" placeholder="localhost:9000" />
+            </label>
+            <label class="field">
+              <span>Папка источника (на отправителе)</span>
+              <input type="text" placeholder="C:\\Backups" />
+            </label>
+            <label class="field">
+              <span>Временная папка архива (на отправителе)</span>
+              <input type="text" placeholder="C:\\BackuperTmp" />
+            </label>
+            <label class="field">
+              <span>Число попыток</span>
+              <input type="number" placeholder="5" />
+            </label>
+          </div>
+          <div class="actions">
+            <button class="ghost">Отменить</button>
+            <button class="primary">Сохранить</button>
+          </div>
+        </section>
+      </main>
+    </div>
+    <script src="/assets/app.js"></script>
+  </body>
+</html>

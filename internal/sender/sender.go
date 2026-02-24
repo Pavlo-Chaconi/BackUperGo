@@ -6,63 +6,49 @@ import (
 	"BackUper/internal/transport"
 	"fmt"
 	"io"
-	"log"
 	"math/rand"
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
 type SenderOptions struct {
 	RootFolder  string
 	ArchivePath string
+	TempDir     string
 	APIKey      string
 	Name        string
 	Addr        string
 	MaxRetries  int
+	EventSink   EventSink
 }
 
-// func BuildAndSendArchive(options SenderOptions) error {
-// 	if options.RootFolder == "" || options.ArchivePath == "" || options.Addr == "" {
-// 		return fmt.Errorf("rootFolder, archivePath и addr являются обязательными параметрами")
-// 	}
-// 	if options.MaxRetries <= 0 {
-// 		options.MaxRetries = 5
-// 	}
-// 	if options.Name == "" {
-// 		options.Name = "backup"
-// 	}
-// 	if options.APIKey == "" {
-// 		return fmt.Errorf("apiKey является обязательным параметром")
-// 	}
+type Event struct {
+	Time    time.Time         `json:"time"`
+	Level   string            `json:"level"`
+	Name    string            `json:"name"`
+	Message string            `json:"message"`
+	Fields  map[string]string `json:"fields,omitempty"`
+}
 
-// 	files, err := collectFiles(options.RootFolder)
-// 	if err != nil {
-// 		return fmt.Errorf("ошибка получения файлов для архивации: %w", err)
-// 	}
+type EventSink interface {
+	Emit(event Event)
+}
 
-// 	size, sha256Hex, err := archive.CreateZipArchive(options.ArchivePath, files)
-// 	if err != nil {
-// 		return fmt.Errorf("ошибка архивации: %w", err)
-// 	}
-
-// 	helloData := protocol.HelloRequest{
-// 		Ver:         1,
-// 		Auth:        options.APIKey,
-// 		JobID:       0,
-// 		Name:        options.Name,
-// 		Size:        size,
-// 		SHA256:      sha256Hex,
-// 		Compression: "zip",
-// 		Encryption:  "none",
-// 	}
-
-// 	if err := sendWithRetry(options.Addr, options.ArchivePath, helloData, options.MaxRetries); err != nil {
-// 		return fmt.Errorf("ошибка при вызове функции sendWithRetry: %w", err)
-// 	}
-// 	return nil
-// }
+func emitEvent(sink EventSink, level, name, message string, fields map[string]string) {
+	if sink == nil {
+		return
+	}
+	sink.Emit(Event{
+		Time:    time.Now().UTC(),
+		Level:   level,
+		Name:    name,
+		Message: message,
+		Fields:  fields,
+	})
+}
 
 func BuildAndSendArchive(options SenderOptions) error {
 	if options.RootFolder == "" || options.Addr == "" {
@@ -78,8 +64,13 @@ func BuildAndSendArchive(options SenderOptions) error {
 		return fmt.Errorf("apiKey является обязательным параметром")
 	}
 
+	emitEvent(options.EventSink, "info", "archive.prepare", "prepare archive", map[string]string{
+		"root": options.RootFolder,
+	})
+
 	// Определяем корректный путь к файлу архива:
 	// - если пусто или передан каталог → сгенерируем имя файла внутри каталога
+	generatedArchive := false
 	isDirHint := false
 	if options.ArchivePath == "" {
 		isDirHint = true
@@ -101,10 +92,12 @@ func BuildAndSendArchive(options SenderOptions) error {
 
 	if isDirHint {
 		var dirPath string
-		if options.ArchivePath == "" {
-			dirPath = os.TempDir()
-		} else {
+		if options.ArchivePath != "" {
 			dirPath = filepath.Clean(options.ArchivePath)
+		} else if strings.TrimSpace(options.TempDir) != "" {
+			dirPath = filepath.Clean(options.TempDir)
+		} else {
+			dirPath = os.TempDir()
 		}
 		base := filepath.Base(options.RootFolder)
 		if base == "." || base == string(filepath.Separator) {
@@ -112,17 +105,32 @@ func BuildAndSendArchive(options SenderOptions) error {
 		}
 		options.ArchivePath = filepath.Join(dirPath,
 			fmt.Sprintf("%s_%s.zip", base, time.Now().Format("20060102_150405")))
+		generatedArchive = true
 	}
 
-	files, err := collectFiles(options.RootFolder)
+	files, err := collectFiles(options.RootFolder, options.EventSink)
 	if err != nil {
+		emitEvent(options.EventSink, "error", "archive.collect.fail", err.Error(), nil)
 		return fmt.Errorf("ошибка получения файлов для архивации: %w", err)
 	}
 
+	emitEvent(options.EventSink, "info", "archive.create.start", "start creating archive", map[string]string{
+		"archive": options.ArchivePath,
+	})
+
 	size, sha256Hex, err := archive.CreateZipArchive(options.ArchivePath, files)
 	if err != nil {
+		emitEvent(options.EventSink, "error", "archive.create.fail", err.Error(), map[string]string{
+			"archive": options.ArchivePath,
+		})
 		return fmt.Errorf("ошибка архивации: %w", err)
 	}
+
+	emitEvent(options.EventSink, "info", "archive.create.ok", "archive created", map[string]string{
+		"archive": options.ArchivePath,
+		"size":    fmt.Sprintf("%d", size),
+		"sha256":  sha256Hex,
+	})
 
 	helloData := protocol.HelloRequest{
 		Ver:         1,
@@ -135,19 +143,37 @@ func BuildAndSendArchive(options SenderOptions) error {
 		Encryption:  "none",
 	}
 
-	log.Printf("[SENDER] Начало отправки: addr=%s, архив=%s, размер=%d", options.Addr, options.ArchivePath, size)
-	if err := sendWithRetry(options.Addr, options.ArchivePath, helloData, options.MaxRetries); err != nil {
+	emitEvent(options.EventSink, "info", "send.start", "start sending archive", map[string]string{
+		"addr":    options.Addr,
+		"archive": options.ArchivePath,
+		"size":    fmt.Sprintf("%d", size),
+	})
+	if err := sendWithRetry(options.Addr, options.ArchivePath, helloData, options.MaxRetries, options.EventSink); err != nil {
+		emitEvent(options.EventSink, "error", "send.fail", err.Error(), map[string]string{
+			"addr": options.Addr,
+		})
 		return fmt.Errorf("ошибка при вызове функции sendWithRetry: %w", err)
 	}
-	log.Printf("[SENDER] Отправка завершена успешно")
+	emitEvent(options.EventSink, "info", "send.ok", "archive sent", nil)
+
+	if generatedArchive {
+		if err := os.Remove(options.ArchivePath); err != nil {
+			emitEvent(options.EventSink, "warn", "archive.cleanup.fail", err.Error(), map[string]string{
+				"archive": options.ArchivePath,
+			})
+		} else {
+			emitEvent(options.EventSink, "info", "archive.cleanup.ok", "temp archive removed", map[string]string{
+				"archive": options.ArchivePath,
+			})
+		}
+	}
 	return nil
 }
-
-func collectFiles(rootFolder string) ([]string, error) {
+func collectFiles(rootFolder string, sink EventSink) ([]string, error) {
 	var files []string
 	err := filepath.Walk(rootFolder, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			log.Printf("Ошибка доступа по пути %s: %v", path, err)
+			emitEvent(sink, "error", "file.access.fail", err.Error(), map[string]string{"path": path})
 			return err
 		}
 		if !info.IsDir() {
@@ -156,27 +182,27 @@ func collectFiles(rootFolder string) ([]string, error) {
 		return nil
 	})
 	if err != nil {
-		log.Fatalf("Фатальная ошибка обхода: %v", err)
+		return nil, err
 	}
 	return files, nil
 }
 
-func sendOnce(Addr string, archivePath string, request protocol.HelloRequest) error {
-	log.Printf("[SENDER] Подключение к %s (таймаут 3 сек)...", Addr)
+func sendOnce(Addr string, archivePath string, request protocol.HelloRequest, sink EventSink) error {
+	emitEvent(sink, "info", "send.connect.start", "dial tcp", map[string]string{"addr": Addr})
 	conn, err := net.DialTimeout("tcp", Addr, 3*time.Second)
 	if err != nil {
-		log.Printf("[SENDER] ОШИБКА подключения: %v", err)
+		emitEvent(sink, "error", "send.connect.fail", err.Error(), map[string]string{"addr": Addr})
 		return fmt.Errorf("ошибка при установке соединения с клиентом: %w", err)
 	}
 	defer conn.Close()
-	log.Printf("[SENDER] Соединение установлено: local=%s -> remote=%s", conn.LocalAddr(), conn.RemoteAddr())
+	emitEvent(sink, "info", "send.connect.ok", "connected", map[string]string{"local": conn.LocalAddr().String(), "remote": conn.RemoteAddr().String()})
 
-	log.Printf("[SENDER] Отправка HELLO (name=%s, size=%d)...", request.Name, request.Size)
+	emitEvent(sink, "info", "send.hello.start", "send hello", map[string]string{"name": request.Name, "size": fmt.Sprintf("%d", request.Size)})
 	if err := transport.SendMessage(conn, request); err != nil {
-		log.Printf("[SENDER] ОШИБКА отправки HELLO: %v", err)
+		emitEvent(sink, "error", "send.hello.fail", err.Error(), nil)
 		return fmt.Errorf("ошибка при отправке HELLO: %w", err)
 	}
-	log.Printf("[SENDER] HELLO отправлен")
+	emitEvent(sink, "info", "send.hello.ok", "hello sent", nil)
 
 	file, err := os.Open(archivePath)
 	if err != nil {
@@ -184,21 +210,21 @@ func sendOnce(Addr string, archivePath string, request protocol.HelloRequest) er
 	}
 	defer file.Close()
 
-	log.Printf("[SENDER] Передача архива (%d байт)...", request.Size)
+	emitEvent(sink, "info", "send.payload.start", "send archive", map[string]string{"size": fmt.Sprintf("%d", request.Size)})
 	written, err := io.CopyN(conn, file, request.Size)
 	if err != nil {
-		log.Printf("[SENDER] ОШИБКА передачи: записано %d/%d: %v", written, request.Size, err)
+		emitEvent(sink, "error", "send.payload.fail", err.Error(), map[string]string{"written": fmt.Sprintf("%d", written), "size": fmt.Sprintf("%d", request.Size)})
 		return fmt.Errorf("ошибка при передаче файла! %w", err)
 	}
-	log.Printf("[SENDER] Архив передан (%d байт)", written)
+	emitEvent(sink, "info", "send.payload.ok", "archive sent", map[string]string{"written": fmt.Sprintf("%d", written)})
 
-	log.Printf("[SENDER] Ожидание FINAL от клиента...")
+	emitEvent(sink, "info", "send.final.wait", "wait final", nil)
 	var finalRequest protocol.FinalResponse
 	if err := transport.ReceiveMessage(conn, &finalRequest); err != nil {
-		log.Printf("[SENDER] ОШИБКА приёма FINAL: %v", err)
+		emitEvent(sink, "error", "send.final.fail", err.Error(), nil)
 		return fmt.Errorf("ошибка полученя FINAL: %w", err)
 	}
-	log.Printf("[SENDER] FINAL получен: status=%s", finalRequest.Status)
+	emitEvent(sink, "info", "send.final.ok", "final received", map[string]string{"status": finalRequest.Status})
 
 	switch finalRequest.Status {
 	case "SIZE_FAIL", "HASH_FAIL":
@@ -211,7 +237,7 @@ func sendOnce(Addr string, archivePath string, request protocol.HelloRequest) er
 	}
 }
 
-func sendWithRetry(addr string, archivePath string, request protocol.HelloRequest, maxRetries int) error {
+func sendWithRetry(addr string, archivePath string, request protocol.HelloRequest, maxRetries int, sink EventSink) error {
 	rand.Seed(time.Now().UnixNano())
 	minJitter := 10
 	maxJitter := 20
@@ -220,15 +246,20 @@ func sendWithRetry(addr string, archivePath string, request protocol.HelloReques
 	delay := 10
 
 	for attempt := 0; attempt < maxRetries; attempt++ {
-		log.Printf("[SENDER] Попытка %d/%d", attempt+1, maxRetries)
-		err := sendOnce(addr, archivePath, request)
+		emitEvent(sink, "info", "send.retry", "attempt", map[string]string{
+			"attempt": fmt.Sprintf("%d", attempt+1),
+			"max":     fmt.Sprintf("%d", maxRetries),
+		})
+		err := sendOnce(addr, archivePath, request, sink)
 		if err == nil {
 			return nil
 		}
-		log.Printf("[SENDER] Попытка не удалась: %v", err)
+		emitEvent(sink, "warn", "send.retry.fail", err.Error(), nil)
 
 		totalSeconds := (min(delay*multiplier, maxDelay) + minJitter + rand.Intn(maxJitter-minJitter+1))
-		log.Printf("[SENDER] Повтор через %d сек...", totalSeconds)
+		emitEvent(sink, "info", "send.retry.wait", "retry wait", map[string]string{
+			"seconds": fmt.Sprintf("%d", totalSeconds),
+		})
 		time.Sleep(time.Duration(totalSeconds) * time.Second)
 
 	}

@@ -1,64 +1,47 @@
-# BackUper
+﻿# BackUper
 
-## ✅ Тестовый основной функционал — ГОТОВ!!! УРА
+Архитектура разделена на **агента** и **сервер**.
+Агент работает на машинах с данными, создаёт архив локально и отправляет на сервер.
+Сервер принимает архивы, хранит их и предоставляет web‑панель.
 
-Архивация, отправка и приём работают. Меню для переключения Сервер/Клиент, логирование в консоль.
+## Состав
 
----
+### Агент
+- `cmd/agent` — агент (polling, отправка)
+- `internal/agent` — логика polling + буфер событий (AppData)
+- `internal/sender` — сбор файлов, архивирование, отправка
+- `internal/archive` — ZIP + SHA256
+- `internal/transport` — length‑prefixed JSON по TCP
 
-## Структура проекта
+### Сервер
+- `cmd/server` — приёмник (TCP receiver)
+- `cmd/web` — web‑панель и API (заглушки)
+- `internal/receiver` — приём архива, проверка SHA256, запись в хранилище
 
-### Sender (сервер — отправляет архив)
-- `cmd/sender/main.go` — точка входа, меню, конфигурация
-- `internal/sender/sender.go` — отправка архива клиенту
-- `internal/archive/archiver.go` — архивация (ZIP, SHA256)
-### Client (клиент — принимает архив)
-- `internal/receiver/receiver.go` — приём архива
+### Конфиг
+- `internal/config/config.go` — единый JSON‑конфиг (agent/server поля)
 
-### Общее
-- `internal/protocol/types.go` — типы HELLO, FINAL
-- `internal/transport/transport.go` — length-prefixed JSON по TCP
+## Установка агента (Windows)
 
----
+### Inno Setup
+Скрипт: `scripts/installer/BackUperAgent.iss`
 
-## Планы развития
-
-- [ ] **Логирование в отдельные файлы**  
-  Весь лог — в файлы. Факт наличия лог-файла отправляется в БД.
-
-- [ ] **База данных для архивов**  
-  Запись метаданных передаваемых архивов для аналитики. Решение о способе хранения (холодный/горячий) по этим данным.
-
-- [ ] **Оповещения в Telegram**  
-  Уведомления администратору о статусе бэкапов.
-
----
-
-## Протокол (JSON handshake)
-
-### HELLO
-```json
-{
-  "ver": 1,
-  "auth": "ApiKey <token>",
-  "job_id": "...",
-  "name": "db1_2025-09-04_1500.tar.zst",
-  "size": 123456789,
-  "sha256": "<64-hex>",
-  "compression": "zstd",
-  "encryption": "none"
-}
+Сборка:
+```
+iscc /DSourceExe="C:\path\to\backuper-agent.exe" /DAppVersion="0.1.0" scripts\installer\BackUperAgent.iss
 ```
 
-### FINAL
-```json
-{
-  "job_id": "...",
-  "status": "OK|FAIL",
-  "reason": "… если FAIL",
-  "size": 123456789,
-  "sha256": "<64-hex>",
-  "received_at": "2025-09-04T15:27:03Z",
-  "stored_path": "/backups/db1/2025-09-04/db1_2025-09-04_1500.tar.zst"
-}
+### PowerShell (быстрая установка)
 ```
+powershell -ExecutionPolicy Bypass -File scripts\install-agent.ps1
+```
+
+## Логи
+Локальные `log.Printf` для агента убраны.
+Все события отправляются на сервер, а при недоступности пишутся в буфер:
+`%APPDATA%\BackUperAgent\events.log`
+
+## Планы
+- [ ] Реальная БД для задач/логов
+- [ ] Полноценная web‑панель (дашборды, настройки, расписание)
+- [ ] Уведомления (Telegram)

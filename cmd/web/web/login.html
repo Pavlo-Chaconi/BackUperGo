@@ -1,0 +1,42 @@
+﻿<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BackUper | Login</title>
+    <link rel="stylesheet" href="/assets/app.css" />
+  </head>
+  <body>
+    <div class="layout auth">
+      <div class="card auth-card">
+        <div class="brand" style="margin-bottom: 18px;">
+          <div class="logo">BU</div>
+          <div class="brand-text">
+            <div class="title">BackUper</div>
+            <div class="subtitle">Local Control Plane</div>
+          </div>
+        </div>
+        <div class="card-header">
+          <h2>Вход в систему</h2>
+          <p>Здесь будет проверка через базу данных. Пока UI-заглушка.</p>
+        </div>
+        <form class="card-body" data-login-form>
+          <label class="field">
+            <span>Логин</span>
+            <input type="text" placeholder="admin" />
+          </label>
+          <label class="field">
+            <span>Пароль</span>
+            <input type="password" placeholder="••••••••" />
+          </label>
+          <label class="field checkbox">
+            <input type="checkbox" />
+            <span>Запомнить меня</span>
+          </label>
+          <button class="primary" type="submit">Войти</button>
+        </form>
+      </div>
+    </div>
+    <script src="/assets/app.js"></script>
+  </body>
+</html>

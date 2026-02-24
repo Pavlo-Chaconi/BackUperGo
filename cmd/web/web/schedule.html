@@ -1,0 +1,93 @@
+﻿<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BackUper | Schedule</title>
+    <link rel="stylesheet" href="/assets/app.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="logo">BU</div>
+          <div class="brand-text">
+            <div class="title">BackUper</div>
+            <div class="subtitle">Local Control Plane</div>
+          </div>
+        </div>
+        <nav class="menu">
+          <a href="/dashboard">Dashboard <span class="pill">live</span></a>
+          <a href="/settings">Settings</a>
+          <a href="/schedule">Schedule</a>
+        </nav>
+        <div class="sidebar-footer">
+          <a href="/login" data-logout>Выйти</a>
+        </div>
+      </aside>
+      <main class="content">
+        <div class="topbar">
+          <h1>Расписание</h1>
+          <div class="meta">Периодичность запуска бэкапов</div>
+        </div>
+        <section class="card">
+          <div class="card-header">
+            <h2>Планирование</h2>
+            <p>Поддержка ежедневных и еженедельных запусков.</p>
+          </div>
+          <div class="card-body">
+            <label class="field checkbox">
+              <input type="checkbox" checked />
+              <span>Ежедневный запуск</span>
+            </label>
+            <div class="schedule-row">
+              <label class="field">
+                <span>Время</span>
+                <input type="time" value="03:00" />
+              </label>
+              <label class="field">
+                <span>Часовой пояс (Россия)</span>
+                <select>
+                  <option>Europe/Kaliningrad (UTC+2)</option>
+                  <option selected>Europe/Moscow (UTC+3)</option>
+                  <option>Europe/Samara (UTC+4)</option>
+                  <option>Asia/Yekaterinburg (UTC+5)</option>
+                  <option>Asia/Omsk (UTC+6)</option>
+                  <option>Asia/Krasnoyarsk (UTC+7)</option>
+                  <option>Asia/Irkutsk (UTC+8)</option>
+                  <option>Asia/Yakutsk (UTC+9)</option>
+                  <option>Asia/Vladivostok (UTC+10)</option>
+                  <option>Asia/Magadan (UTC+11)</option>
+                  <option>Asia/Kamchatka (UTC+12)</option>
+                </select>
+              </label>
+            </div>
+            <div class="schedule-row">
+              <label class="field">
+                <span>Еженедельный запуск (день недели)</span>
+                <select>
+                  <option>Понедельник</option>
+                  <option>Вторник</option>
+                  <option>Среда</option>
+                  <option>Четверг</option>
+                  <option>Пятница</option>
+                  <option>Суббота</option>
+                  <option>Воскресенье</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Время</span>
+                <input type="time" value="02:00" />
+              </label>
+            </div>
+          </div>
+          <div class="actions">
+            <button class="ghost">Сброс</button>
+            <button class="primary">Сохранить</button>
+          </div>
+        </section>
+      </main>
+    </div>
+    <script src="/assets/app.js"></script>
+  </body>
+</html>

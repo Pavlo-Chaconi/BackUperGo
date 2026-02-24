@@ -8,14 +8,28 @@ import (
 )
 
 type Config struct {
-	HomeDir      string `json:"home_dir"`
-	ScheduleTime string `json:"schedule_time"` // HH:MM
+	HomeDir         string `json:"home_dir"`
+	ScheduleTime    string `json:"schedule_time"` // HH:MM
+	TempArchiveDir  string `json:"temp_archive_dir"`
+	ServerAddr      string `json:"server_addr"`
+	APIKey          string `json:"api_key"`
+	AgentID         string `json:"agent_id"`
+	PollInterval    int    `json:"poll_interval_seconds"`
+	APIURL          string `json:"api_url"`
+	EventBufferPath string `json:"event_buffer_path"`
 }
 
 func Default() Config {
 	return Config{
-		HomeDir:      "",
-		ScheduleTime: "03:00",
+		HomeDir:         "",
+		ScheduleTime:    "03:00",
+		TempArchiveDir:  "",
+		ServerAddr:      "localhost:9000",
+		APIKey:          "",
+		AgentID:         "",
+		PollInterval:    60,
+		APIURL:          "http://localhost:8080",
+		EventBufferPath: "",
 	}
 }
 
