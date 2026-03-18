@@ -1,19 +1,33 @@
 package receiver
 
 import (
+	"BackUper/internal/hash"
 	"BackUper/internal/protocol"
 	"BackUper/internal/transport"
-	"crypto/sha256"
-	"encoding/hex"
 	"io"
 	"log"
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
-const baseDir = "C:\\BackUper\\backups"
+var (
+	baseDir string
+	apiKey  string
+)
+
+func init() {
+	// Путь к хранилищу из переменной окружения или по умолчанию
+	baseDir = os.Getenv("BACKUPER_STORAGE_DIR")
+	if baseDir == "" {
+		baseDir = "C:\\BackUper\\backups"
+	}
+
+	// APIKey для проверки агентов (опционально)
+	apiKey = strings.TrimSpace(os.Getenv("BACKUPER_API_KEY"))
+}
 
 func Run() {
 	receiverMain(nil)
@@ -84,6 +98,22 @@ func handleConnectionFromServer(conn net.Conn) {
 	}
 	log.Printf("[CLIENT] HELLO получен: name=%s, size=%d", helloRequest.Name, helloRequest.Size)
 
+	// Проверка APIKey (если задан)
+	if apiKey != "" && helloRequest.Auth != apiKey {
+		log.Printf("[CLIENT] AUTH FAIL: неверный APIKey от %s", remote)
+		responseData := protocol.FinalResponse{
+			JobID:      helloRequest.JobID,
+			Status:     "AUTH_FAIL",
+			Reason:     "Неверный APIKey",
+			Size:       0,
+			SHA256:     "",
+			ReceivedAt: time.Now(),
+			StoredPath: "",
+		}
+		_ = transport.SendMessage(conn, responseData)
+		return
+	}
+
 	safeFileName := filepath.Base(helloRequest.Name)
 	filePath := filepath.Join(baseDir, "received_"+safeFileName)
 
@@ -122,7 +152,7 @@ func handleConnectionFromServer(conn net.Conn) {
 	}
 
 	log.Printf("[CLIENT] Подсчёт SHA256...")
-	receivedHash, err := calc256Hex(filePath)
+	receivedHash, err := hash.SHA256File(filePath)
 	if err != nil {
 		log.Printf("[CLIENT] ОШИБКА подсчета SHA256: %v", err)
 		return
@@ -152,20 +182,4 @@ func handleConnectionFromServer(conn net.Conn) {
 		return
 	}
 	log.Printf("[CLIENT] FINAL отправлен. Архив сохранён: %s", filePath)
-
-}
-
-func calc256Hex(path string) (string, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return "", err
-	}
-	defer file.Close()
-
-	hasher := sha256.New()
-	if _, err := io.Copy(hasher, file); err != nil {
-		return "", err
-	}
-
-	return hex.EncodeToString(hasher.Sum(nil)), nil
 }

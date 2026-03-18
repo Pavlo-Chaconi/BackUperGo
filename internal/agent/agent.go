@@ -8,23 +8,39 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
+	"BackUper/internal/config"
 	"BackUper/internal/sender"
 )
 
 type Options struct {
-	AgentID      string
-	APIURL       string
-	PollInterval time.Duration
-	EventBuffer  string
-	Sender       sender.SenderOptions
+	AgentID       string
+	APIURL        string
+	PollInterval  time.Duration
+	EventBuffer   string
+	ConfigPath    string
+	ConfigVersion int
+	Sender        sender.SenderOptions
 }
 
 type PollResponse struct {
-	Action string `json:"action"`
-	JobID  string `json:"job_id,omitempty"`
+	Action        string       `json:"action"`
+	JobID         string       `json:"job_id,omitempty"`
+	Config        *AgentConfig `json:"config,omitempty"`
+	ConfigVersion int          `json:"config_version,omitempty"`
+}
+
+type AgentConfig struct {
+	HomeDir             string `json:"home_dir,omitempty"`
+	ScheduleTime        string `json:"schedule_time,omitempty"`
+	TempArchiveDir      string `json:"temp_archive_dir,omitempty"`
+	ServerAddr          string `json:"server_addr,omitempty"`
+	PollIntervalSeconds int    `json:"poll_interval_seconds,omitempty"`
+	APIURL              string `json:"api_url,omitempty"`
+	ConfigVersion       int    `json:"config_version,omitempty"`
 }
 
 type ReportRequest struct {
@@ -63,6 +79,7 @@ func normalizeOptions(opts Options) Options {
 
 func RunOnce(opts Options) {
 	opts = normalizeOptions(opts)
+	heartbeat(opts.APIURL, opts.AgentID)
 	runOnce(opts, "")
 }
 
@@ -105,15 +122,27 @@ func runPolling(opts Options, stop <-chan struct{}) {
 	ticker := time.NewTicker(opts.PollInterval)
 	defer ticker.Stop()
 
+	heartbeat(opts.APIURL, opts.AgentID)
 	for {
-		action, jobID := poll(opts.APIURL, opts.AgentID)
+		action, jobID, cfg := poll(opts.APIURL, opts.AgentID, opts.ConfigVersion)
 		if action == "RUN" {
 			runOnce(Options{
-				AgentID:      opts.AgentID,
-				APIURL:       opts.APIURL,
-				PollInterval: opts.PollInterval,
-				Sender:       opts.Sender,
+				AgentID:       opts.AgentID,
+				APIURL:        opts.APIURL,
+				PollInterval:  opts.PollInterval,
+				ConfigPath:    opts.ConfigPath,
+				ConfigVersion: opts.ConfigVersion,
+				Sender:        opts.Sender,
 			}, jobID)
+		} else if action == "CONFIG" && cfg != nil {
+			prevInterval := opts.PollInterval
+			if err := applyConfig(&opts, *cfg); err == nil && cfg.ConfigVersion > 0 {
+				opts.ConfigVersion = cfg.ConfigVersion
+			}
+			if opts.PollInterval != prevInterval {
+				ticker.Stop()
+				ticker = time.NewTicker(opts.PollInterval)
+			}
 		}
 		select {
 		case <-ticker.C:
@@ -223,27 +252,30 @@ func (s bufferedSink) postLine(line string) error {
 	return err
 }
 
-func poll(apiURL, agentID string) (string, string) {
+func poll(apiURL, agentID string, configVersion int) (string, string, *AgentConfig) {
 	if strings.TrimSpace(apiURL) == "" {
-		return "WAIT", ""
+		return "WAIT", "", nil
 	}
-	url := strings.TrimRight(apiURL, "/") + "/api/agent/poll?agent_id=" + agentID
+	url := strings.TrimRight(apiURL, "/") + "/api/agent/poll?agent_id=" + agentID + "&config_version=" + strconv.Itoa(configVersion)
 	resp, err := http.Get(url)
 	if err != nil {
 		log.Printf("poll error: %v", err)
-		return "WAIT", ""
+		return "WAIT", "", nil
 	}
 	defer resp.Body.Close()
 
 	var pr PollResponse
 	if err := json.NewDecoder(resp.Body).Decode(&pr); err != nil {
 		log.Printf("poll decode error: %v", err)
-		return "WAIT", ""
+		return "WAIT", "", nil
 	}
 	if pr.Action == "" {
-		return "WAIT", ""
+		return "WAIT", "", nil
 	}
-	return pr.Action, pr.JobID
+	if pr.Config != nil && pr.ConfigVersion > 0 {
+		pr.Config.ConfigVersion = pr.ConfigVersion
+	}
+	return pr.Action, pr.JobID, pr.Config
 }
 
 func report(apiURL string, req ReportRequest) {
@@ -256,4 +288,75 @@ func report(apiURL string, req ReportRequest) {
 	if err != nil {
 		log.Printf("report error: %v", err)
 	}
+}
+
+func heartbeat(apiURL, agentID string) {
+	if strings.TrimSpace(apiURL) == "" || strings.TrimSpace(agentID) == "" {
+		return
+	}
+	url := strings.TrimRight(apiURL, "/") + "/api/agent/heartbeat"
+	body, _ := json.Marshal(map[string]string{"agent_id": agentID})
+	_, err := http.Post(url, "application/json", bytes.NewReader(body))
+	if err != nil {
+		log.Printf("heartbeat error: %v", err)
+	}
+}
+
+func applyConfig(opts *Options, cfg AgentConfig) error {
+	if opts == nil {
+		return nil
+	}
+	if strings.TrimSpace(cfg.HomeDir) != "" {
+		opts.Sender.RootFolder = cfg.HomeDir
+	}
+	if strings.TrimSpace(cfg.TempArchiveDir) != "" {
+		opts.Sender.TempDir = cfg.TempArchiveDir
+	}
+	if strings.TrimSpace(cfg.ServerAddr) != "" {
+		opts.Sender.Addr = cfg.ServerAddr
+	}
+	if strings.TrimSpace(cfg.APIURL) != "" {
+		opts.APIURL = cfg.APIURL
+	}
+	if cfg.PollIntervalSeconds > 0 {
+		opts.PollInterval = time.Duration(cfg.PollIntervalSeconds) * time.Second
+	}
+
+	if strings.TrimSpace(opts.ConfigPath) == "" {
+		return nil
+	}
+
+	data, err := os.ReadFile(opts.ConfigPath)
+	current := config.Config{}
+	if err == nil {
+		_ = json.Unmarshal(data, &current)
+	}
+	if strings.TrimSpace(cfg.HomeDir) != "" {
+		current.HomeDir = cfg.HomeDir
+	}
+	if strings.TrimSpace(cfg.ScheduleTime) != "" {
+		current.ScheduleTime = cfg.ScheduleTime
+	}
+	if strings.TrimSpace(cfg.TempArchiveDir) != "" {
+		current.TempArchiveDir = cfg.TempArchiveDir
+	}
+	if strings.TrimSpace(cfg.ServerAddr) != "" {
+		current.ServerAddr = cfg.ServerAddr
+	}
+	if cfg.PollIntervalSeconds > 0 {
+		current.PollInterval = cfg.PollIntervalSeconds
+	}
+	if strings.TrimSpace(cfg.APIURL) != "" {
+		current.APIURL = cfg.APIURL
+	}
+	if cfg.ConfigVersion > 0 {
+		current.ConfigVersion = cfg.ConfigVersion
+	}
+	if current.AgentID == "" {
+		current.AgentID = opts.AgentID
+	}
+	if err := config.Save(opts.ConfigPath, current); err != nil {
+		return err
+	}
+	return nil
 }

@@ -2,11 +2,11 @@ package archive
 
 import (
 	"archive/zip"
-	"crypto/sha256"
-	"encoding/hex"
 	"io"
 	"os"
 	"path/filepath"
+
+	"BackUper/internal/hash"
 )
 
 func CreateZipArchive(archivePath string, filesToArchive []string) (size int64, sha256Hex string, err error) {
@@ -60,22 +60,10 @@ func CreateZipArchive(archivePath string, filesToArchive []string) (size int64, 
 
 	size = info.Size()
 
-	hasher := sha256.New()
-
-	file, err := os.Open(archivePath)
+	sha256Hex, err = hash.SHA256File(archivePath)
 	if err != nil {
 		return 0, "", err
 	}
-	defer file.Close()
-
-	_, err = io.Copy(hasher, file)
-	if err != nil {
-		return 0, "", err
-	}
-
-	hashBytes := hasher.Sum(nil)
-	sha256Hex = hex.EncodeToString(hashBytes)
 
 	return size, sha256Hex, nil
-
 }

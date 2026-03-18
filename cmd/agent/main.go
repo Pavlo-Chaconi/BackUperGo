@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"log"
 	"time"
 
 	"BackUper/internal/agent"
@@ -13,6 +14,14 @@ func main() {
 	cfg, cfgPath, cfgErr := config.LoadOrCreate("BackUperAgent")
 	_ = cfgPath
 	_ = cfgErr
+
+	if cfgErr == nil {
+		if updated, err := agent.EnsureEnrolled(cfg, cfgPath); err == nil {
+			cfg = updated
+		} else {
+			log.Printf("enrollment skipped: %v", err)
+		}
+	}
 
 	source := flag.String("source", cfg.HomeDir, "source folder to archive")
 	addr := flag.String("addr", cfg.ServerAddr, "server address host:port")
@@ -30,10 +39,12 @@ func main() {
 	flag.Parse()
 
 	opts := agent.Options{
-		AgentID:      *agentID,
-		APIURL:       *apiURL,
-		PollInterval: time.Duration(*pollSec) * time.Second,
-		EventBuffer:  *bufferPath,
+		AgentID:       *agentID,
+		APIURL:        *apiURL,
+		PollInterval:  time.Duration(*pollSec) * time.Second,
+		EventBuffer:   *bufferPath,
+		ConfigPath:    cfgPath,
+		ConfigVersion: cfg.ConfigVersion,
 		Sender: sender.SenderOptions{
 			RootFolder:  *source,
 			ArchivePath: *archive,

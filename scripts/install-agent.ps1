@@ -4,7 +4,8 @@
   [string]$SourceFolder = "",
   [string]$TempFolder = "",
   [string]$ServerAddr = "",
-  [string]$ApiUrl = "http://localhost:8080"
+  [string]$ApiUrl = "http://localhost:8080",
+  [string]$EnrollToken = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -53,13 +54,19 @@ $configPath = Join-Path $configDir "config.json"
 
 $bufferPath = Join-Path $env:APPDATA "BackUperAgent\events.log"
 
+$agentId = ""
+if (-not $EnrollToken) {
+  $agentId = $env:COMPUTERNAME
+}
+
 $config = @{
   home_dir = $SourceFolder
   schedule_time = "03:00"
   temp_archive_dir = $TempFolder
   server_addr = $ServerAddr
   api_key = ""
-  agent_id = $env:COMPUTERNAME
+  agent_id = $agentId
+  enrollment_token = $EnrollToken
   poll_interval_seconds = 60
   api_url = $ApiUrl
   event_buffer_path = $bufferPath

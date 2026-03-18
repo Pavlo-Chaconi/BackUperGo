@@ -18,6 +18,7 @@
         </div>
         <nav class="menu">
           <a href="/dashboard">Dashboard <span class="pill">live</span></a>
+          <a href="/agents">Agents</a>
           <a href="/settings">Settings</a>
           <a href="/schedule">Schedule</a>
         </nav>
@@ -56,6 +57,28 @@
           <div class="actions">
             <button class="ghost">Отменить</button>
             <button class="primary">Сохранить</button>
+          </div>
+        </section>
+        <section class="card">
+          <div class="card-header">
+            <h2>Подключение агента</h2>
+            <p>Сгенерируйте одноразовый скрипт установки (TTL 12 часов, 1 активация).</p>
+          </div>
+          <div class="card-body">
+            <div class="install-row">
+              <button class="primary" data-enroll-generate>Сгенерировать скрипт</button>
+              <div class="install-meta">
+                <div>Токен: <span data-enroll-token>—</span></div>
+                <div>Истекает: <span data-enroll-exp>—</span></div>
+              </div>
+            </div>
+            <label class="field">
+              <span>PowerShell скрипт установки</span>
+              <textarea class="code-area" rows="12" readonly data-enroll-script></textarea>
+            </label>
+            <div class="actions">
+              <button class="ghost" data-enroll-copy>Копировать</button>
+            </div>
           </div>
         </section>
       </main>

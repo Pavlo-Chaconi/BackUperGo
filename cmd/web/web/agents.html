@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BackUper | Agents</title>
+    <link rel="stylesheet" href="/assets/app.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="logo">BU</div>
+          <div class="brand-text">
+            <div class="title">BackUper</div>
+            <div class="subtitle">Local Control Plane</div>
+          </div>
+        </div>
+        <nav class="menu">
+          <a href="/dashboard">Dashboard <span class="pill">live</span></a>
+          <a href="/agents">Agents</a>
+          <a href="/settings">Settings</a>
+          <a href="/schedule">Schedule</a>
+        </nav>
+        <div class="sidebar-footer">
+          <a href="/login" data-logout>Выйти</a>
+        </div>
+      </aside>
+      <main class="content">
+        <div class="topbar">
+          <h1>Агенты</h1>
+          <div class="meta">Статусы и базовая конфигурация</div>
+        </div>
+        <section class="card">
+          <div class="card-header">
+            <h2>Список агентов</h2>
+            <p>Выберите агента, чтобы применить настройки.</p>
+          </div>
+          <div class="card-body">
+            <div class="agents-grid">
+              <div class="agents-list" data-agents-list></div>
+              <form class="agents-form" data-agent-form>
+                <div class="form-title">Конфигурация</div>
+                <label class="field">
+                  <span>Агент</span>
+                  <input type="text" data-agent-id readonly placeholder="Выберите агента" />
+                </label>
+                <label class="field">
+                  <span>Папка источника</span>
+                  <input type="text" data-home-dir placeholder="C:\\Backups" />
+                </label>
+                <label class="field">
+                  <span>Временная папка</span>
+                  <input type="text" data-temp-dir placeholder="C:\\BackuperTmp" />
+                </label>
+                <label class="field">
+                  <span>Адрес приёмника</span>
+                  <input type="text" data-server-addr placeholder="server:9000" />
+                </label>
+                <label class="field">
+                  <span>Расписание (HH:MM)</span>
+                  <input type="text" data-schedule placeholder="03:00" />
+                </label>
+                <label class="field">
+                  <span>Интервал poll (сек.)</span>
+                  <input type="number" data-poll placeholder="60" />
+                </label>
+                <div class="actions">
+                  <button class="ghost" type="button" data-agent-reset>Сбросить</button>
+                  <button class="primary" type="submit" data-agent-save>Сохранить</button>
+                </div>
+                <div class="form-hint" data-agent-status>—</div>
+              </form>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+    <script src="/assets/app.js"></script>
+  </body>
+</html>

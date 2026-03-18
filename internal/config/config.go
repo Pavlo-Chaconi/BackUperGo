@@ -14,9 +14,11 @@ type Config struct {
 	ServerAddr      string `json:"server_addr"`
 	APIKey          string `json:"api_key"`
 	AgentID         string `json:"agent_id"`
+	EnrollmentToken string `json:"enrollment_token"`
 	PollInterval    int    `json:"poll_interval_seconds"`
 	APIURL          string `json:"api_url"`
 	EventBufferPath string `json:"event_buffer_path"`
+	ConfigVersion   int    `json:"config_version"`
 }
 
 func Default() Config {
@@ -27,9 +29,11 @@ func Default() Config {
 		ServerAddr:      "localhost:9000",
 		APIKey:          "",
 		AgentID:         "",
+		EnrollmentToken: "",
 		PollInterval:    60,
 		APIURL:          "http://localhost:8080",
 		EventBufferPath: "",
+		ConfigVersion:   0,
 	}
 }
 

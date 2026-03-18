@@ -60,9 +60,7 @@ func BuildAndSendArchive(options SenderOptions) error {
 	if options.Name == "" {
 		options.Name = "backup"
 	}
-	if options.APIKey == "" {
-		return fmt.Errorf("apiKey является обязательным параметром")
-	}
+	// APIKey опционален — проверяется на стороне receiver
 
 	emitEvent(options.EventSink, "info", "archive.prepare", "prepare archive", map[string]string{
 		"root": options.RootFolder,
@@ -238,7 +236,8 @@ func sendOnce(Addr string, archivePath string, request protocol.HelloRequest, si
 }
 
 func sendWithRetry(addr string, archivePath string, request protocol.HelloRequest, maxRetries int, sink EventSink) error {
-	rand.Seed(time.Now().UnixNano())
+	// Используем локальный источник случайности (rand.Seed депрекейтед в Go 1.20+)
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	minJitter := 10
 	maxJitter := 20
 	multiplier := 2
@@ -256,7 +255,7 @@ func sendWithRetry(addr string, archivePath string, request protocol.HelloReques
 		}
 		emitEvent(sink, "warn", "send.retry.fail", err.Error(), nil)
 
-		totalSeconds := (min(delay*multiplier, maxDelay) + minJitter + rand.Intn(maxJitter-minJitter+1))
+		totalSeconds := (min(delay*multiplier, maxDelay) + minJitter + rng.Intn(maxJitter-minJitter+1))
 		emitEvent(sink, "info", "send.retry.wait", "retry wait", map[string]string{
 			"seconds": fmt.Sprintf("%d", totalSeconds),
 		})

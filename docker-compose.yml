@@ -1,0 +1,50 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: backuper
+      POSTGRES_USER: backuper
+      POSTGRES_PASSWORD: backuper
+    ports:
+      - "5432:5432"
+    volumes:
+      - backuper_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U backuper -d backuper"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    environment:
+      DATABASE_URL: postgres://backuper:backuper@db:5432/backuper?sslmode=disable
+      BACKUPER_SERVER_ADDR: server:9000
+      BACKUPER_API_URL: http://localhost:8080
+      BACKUPER_AGENT_BINARY: /app/backuper-agent.exe
+      BACKUPER_API_KEY: ${BACKUPER_API_KEY:-}
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./dist/backuper-agent.exe:/app/backuper-agent.exe:ro
+    depends_on:
+      db:
+        condition: service_healthy
+
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile.receiver
+    ports:
+      - "9000:9000"
+    volumes:
+      - backuper_data:/data
+    environment:
+      BACKUPER_API_KEY: ${BACKUPER_API_KEY:-}
+      BACKUPER_STORAGE_DIR: /data
+
+volumes:
+  backuper_pg:
+  backuper_data:
